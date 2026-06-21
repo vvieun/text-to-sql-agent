@@ -1,0 +1,72 @@
+- question: What is the total revenue across all sales?
+  sql: select sum(amount) from fact_sales
+
+- question: Show total revenue per product category.
+  sql: |
+    select p.category, sum(f.amount) as revenue
+    from fact_sales f join dim_product p using (product_key)
+    group by p.category
+
+- question: Who are the top 5 customers by total revenue?
+  sql: |
+    select c.name, sum(f.amount) as revenue
+    from fact_sales f join dim_customer c using (customer_key)
+    group by c.name order by revenue desc limit 5
+
+- question: What is the monthly revenue for the year 2024?
+  sql: |
+    select d.month, sum(f.amount) as revenue
+    from fact_sales f join dim_date d using (date_key)
+    where d.year = 2024
+    group by d.month order by d.month
+
+- question: Show total revenue by store region.
+  sql: |
+    select s.region, sum(f.amount) as revenue
+    from fact_sales f join dim_store s using (store_key)
+    group by s.region
+
+- question: What is the average sale amount per customer segment?
+  sql: |
+    select c.segment, avg(f.amount) as avg_amount
+    from fact_sales f join dim_customer c using (customer_key)
+    group by c.segment
+
+- question: How many distinct products were sold in each category?
+  sql: |
+    select p.category, count(distinct f.product_key) as products_sold
+    from fact_sales f join dim_product p using (product_key)
+    group by p.category
+
+- question: What are the total units sold per brand?
+  sql: |
+    select p.brand, sum(f.quantity) as units
+    from fact_sales f join dim_product p using (product_key)
+    group by p.brand
+
+- question: Show revenue by quarter for 2024.
+  sql: |
+    select d.quarter, sum(f.amount) as revenue
+    from fact_sales f join dim_date d using (date_key)
+    where d.year = 2024
+    group by d.quarter order by d.quarter
+
+- question: List customers whose total spend is above 50000, with their total spend.
+  sql: |
+    select c.name, sum(f.amount) as total_spend
+    from fact_sales f join dim_customer c using (customer_key)
+    group by c.name having sum(f.amount) > 50000
+
+- question: For each category, show its revenue and its share of total revenue as a percentage.
+  sql: |
+    select p.category,
+           sum(f.amount) as revenue,
+           round(100 * sum(f.amount) / sum(sum(f.amount)) over (), 2) as pct
+    from fact_sales f join dim_product p using (product_key)
+    group by p.category order by revenue desc
+
+- question: What is the total revenue per country based on where the store is located?
+  sql: |
+    select s.country, sum(f.amount) as revenue
+    from fact_sales f join dim_store s using (store_key)
+    group by s.country

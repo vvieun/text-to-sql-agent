@@ -1,0 +1,5 @@
+anthropic>=0.40
+psycopg2-binary>=2.9
+pyyaml>=6.0
+langgraph>=0.2
+langfuse>=3.0
