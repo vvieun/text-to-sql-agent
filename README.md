@@ -1,50 +1,52 @@
+[English](README.md) · [Русский](README.ru.md)
+
 # text-to-sql-agent
 
-Мульти-агентный перевод вопроса на естественном языке в sql запрос над хранилищем данных (postgresql, звёздная схема) и выполнение в режиме read-only. 
+A team of agents turns a question in plain language into a SQL query. The query runs over a data warehouse (postgresql, star schema) in read-only mode.
 
-Оркестрация - граф состояний на langgraph с циклом самокоррекции, каждый запуск трейсится в langfuse.
+The agents are run by a state graph built on langgraph. The graph has a self-correction loop. Each run is traced in langfuse.
 
-## Содержание
+## Table of contents
 
-- [Архитектура](#архитектура)
-- [Стек](#стек)
-- [Данные](#данные)
-- [Пример запуска](#пример-запуска)
-- [Измерения](#измерения)
-- [Безопасность](#безопасность)
-- [Трейсинг](#трейсинг)
-- [Конфигурация](#конфигурация)
-- [Заметки](#заметки)
+- [Architecture](#architecture)
+- [Stack](#stack)
+- [Data](#data)
+- [Example run](#example-run)
+- [Benchmarks](#benchmarks)
+- [Security](#security)
+- [Tracing](#tracing)
+- [Configuration](#configuration)
+- [Notes](#notes)
 
-## Архитектура
+## Architecture
 
-### Диаграмма последовательностей взаимодействия агентов
+### Agent interaction sequence diagram
 
-![sequence](docs/sequence.png)
+![sequence](docs/sequence.en.png)
 
-Агенты:
-- **schema agent** (`text2sql/agents/schema_agent.py`) сужает схему до таблиц, нужных под вопрос;
-- **generator** (`text2sql/agents/generator.py`) пишет один select и переписывает его по фидбэку;
-- **reviewer** (`text2sql/agents/reviewer.py`) выполняет три проверки: статическая безопасность (только select, одно выражение, без write-ключевых слов), валидация через `explain`, llm-критика «отвечает ли запрос на вопрос»;
-- **executor** (`db.run`) отправляет запрос в `read only` сессии postgres с таймаутом.
+Agents:
+- **schema agent** (`text2sql/agents/schema_agent.py`) picks only the tables that the question needs;
+- **generator** (`text2sql/agents/generator.py`) writes one select and rewrites it when it gets feedback;
+- **reviewer** (`text2sql/agents/reviewer.py`) does three checks: a safety check (select only, one statement, no write keywords), a check with `explain`, and an llm check that asks "does the query answer the question";
+- **executor** (`db.run`) runs the query in a `read only` postgres session with a timeout.
 
-### Граф в `text2sql/orchestrator.py` 
+### Graph in `text2sql/orchestrator.py`
 
-Узлами являются агенты, условные рёбра задают цикл (пунктир — условные переходы)
+The nodes are agents. Conditional edges make the loop (dashed lines mean conditional steps).
 
-![граф состояний](docs/graph.png)
+![state graph](docs/graph.png)
 
-## Стек
+## Stack
 
 python, postgresql, anthropic api, langgraph, langfuse.
 
-## Данные
+## Data
 
-**Звёздная схема:** факт `fact_sales` + измерения `dim_date`, `dim_customer`, `dim_product`, `dim_store`. 
+**Star schema:** fact `fact_sales` + dimensions `dim_date`, `dim_customer`, `dim_product`, `dim_store`.
 
-Наполняется синтетикой (`text2sql/seed.py`).
+Filled with fake data (`text2sql/seed.py`).
 
-## Пример запуска
+## Example run
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -56,24 +58,24 @@ python -m text2sql.seed
 python -m text2sql.cli "выручка по категориям товаров за 2024"
 ```
 
-Трейс показывает каждую попытку, отклонения reviewer и итоговый результат.
+The trace shows every attempt, the queries the reviewer turned down, and the final result.
 
-## Измерения
+## Benchmarks
 
 ```bash
 python -m benchmark.run
 ```
 
-Гоняет агента по парам (вопрос и эталонный sql) из `benchmark/cases.yaml` и считает:
+Runs the agent over pairs (question and reference sql) from `benchmark/cases.yaml`. It then computes:
 
-- результат агента против эталона (сравнение как мультимножеств, без учёта порядка и имён колонок);
-- доля решённых с первой попытки;
-- средняя латентность и число попыток;
-- сколько запросов reviewer отклонил до выполнения.
+- the agent's result against the reference (compared as multisets, ignoring order and column names);
+- the share solved on the first attempt;
+- average latency and number of attempts;
+- how many queries the reviewer turned down before execution.
 
-Отчёт пишется в `benchmark/report.md`. 
+The report is saved to `benchmark/report.md`.
 
-### Пример отчета:
+### Example report:
 
 - model: `claude-opus-4-8`
 - cases: 12
@@ -90,28 +92,28 @@ python -m benchmark.run
 | 3 | pass | 1 | 2.6s | Who are the top 5 customers by total revenue? |
 |...|||||
 
-## Безопасность
+## Security
 
-Два независимых слоя:
-1. **статическая проверка** режет всё, что не является одиночным select, и любые write-ключевые слова (`insert`, `update`, `delete`, `drop`, …);
-2. **уровень бд**, на котором executor работает в `read only` сессии.
+Two separate layers:
+1. **static check** removes anything that is not a single select, and any write keywords (`insert`, `update`, `delete`, `drop`, …);
+2. **database level**, where the executor runs in a `read only` session.
 
-## Трейсинг
+## Tracing
 
-Каждый шаг графа и вызов llm обёрнут в langfuse (`@observe`, `text2sql/tracing.py`):
-- c ключами `langfuse_public_key` / `langfuse_secret_key` запуск виден деревом: трейс `answer` - спан на узел графа (`schema`, `generate`, `review`, `execute`) - generation с моделью, токенами и латентностью;
-- без ключей трейсинг - прозрачный no-op.
+Every graph step and llm call is wrapped in langfuse (`@observe`, `text2sql/tracing.py`):
+- with the `langfuse_public_key` / `langfuse_secret_key` keys, a run is shown as a tree: trace `answer` - one span per graph node (`schema`, `generate`, `review`, `execute`) - a generation with model, tokens, and latency;
+- without the keys, tracing does nothing and gets out of the way.
 
-## Конфигурация
+## Configuration
 
-| переменная | по умолчанию |
+| variable | default |
 |------------|--------------|
 | `anthropic_api_key` | — |
 | `database_url` | `postgresql://dwh:dwh@localhost:5432/dwh` |
 | `dwh_agent_model` | `claude-opus-4-8` |
-| `langfuse_public_key` / `langfuse_secret_key` | не заданы |
+| `langfuse_public_key` / `langfuse_secret_key` | not set |
 | `langfuse_base_url` | `https://cloud.langfuse.com` |
 
-## Заметки
+## Notes
 
-Сравнение результатов нормализует значения ячеек (округляет числа) и игнорирует порядок колонок, а значит изредка может счесть два разных по форме результата одинаковыми. Для более строгой оценки можно зафиксировать ожидаемые колонки в кейсе.
+The result comparison rounds cell numbers and ignores column order. Because of this, it can sometimes treat two results with different shapes as the same. For a stricter check, you can set the expected columns in the case.
